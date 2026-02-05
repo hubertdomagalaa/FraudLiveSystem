@@ -1,0 +1,25 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-policy
+  namespace: fraud-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent-policy
+  template:
+    metadata:
+      labels:
+        app: agent-policy
+    spec:
+      containers:
+        - name: agent-policy
+          image: fraud/agent-policy:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: fraud-platform-config
+            - secretRef:
+                name: fraud-platform-secrets

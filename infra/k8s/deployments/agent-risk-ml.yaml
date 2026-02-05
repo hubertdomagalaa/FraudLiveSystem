@@ -1,0 +1,25 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-risk-ml
+  namespace: fraud-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent-risk-ml
+  template:
+    metadata:
+      labels:
+        app: agent-risk-ml
+    spec:
+      containers:
+        - name: agent-risk-ml
+          image: fraud/agent-risk-ml:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: fraud-platform-config
+            - secretRef:
+                name: fraud-platform-secrets

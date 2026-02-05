@@ -1,0 +1,25 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-llm-explainer
+  namespace: fraud-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent-llm-explainer
+  template:
+    metadata:
+      labels:
+        app: agent-llm-explainer
+    spec:
+      containers:
+        - name: agent-llm-explainer
+          image: fraud/agent-llm-explainer:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: fraud-platform-config
+            - secretRef:
+                name: fraud-platform-secrets

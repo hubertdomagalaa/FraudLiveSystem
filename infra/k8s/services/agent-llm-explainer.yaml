@@ -1,0 +1,11 @@
+﻿apiVersion: v1
+kind: Service
+metadata:
+  name: agent-llm-explainer
+  namespace: fraud-platform
+spec:
+  selector:
+    app: agent-llm-explainer
+  ports:
+    - port: 80
+      targetPort: 8000

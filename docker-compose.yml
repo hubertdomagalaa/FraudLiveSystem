@@ -1,0 +1,113 @@
+﻿version: "3.9"
+
+services:
+  ingestion-api:
+    build:
+      context: .
+      dockerfile: services/ingestion-api/Dockerfile
+    environment:
+      SERVICE_NAME: ingestion-api
+      LOG_LEVEL: INFO
+      QUEUE_BACKEND: noop
+    ports:
+      - "8001:8000"
+    depends_on:
+      - nats
+
+  decision-orchestrator:
+    build:
+      context: .
+      dockerfile: services/decision-orchestrator/Dockerfile
+    environment:
+      SERVICE_NAME: decision-orchestrator
+      LOG_LEVEL: INFO
+      CONTEXT_AGENT_URL: http://agent-context:8000
+      RISK_AGENT_URL: http://agent-risk-ml:8000
+      POLICY_AGENT_URL: http://agent-policy:8000
+      LLM_AGENT_URL: http://agent-llm-explainer:8000
+      DEFAULT_DECISION: REVIEW
+    ports:
+      - "8002:8000"
+    depends_on:
+      - agent-context
+      - agent-risk-ml
+      - agent-policy
+      - agent-llm-explainer
+
+  agent-context:
+    build:
+      context: .
+      dockerfile: services/agent-context/Dockerfile
+    environment:
+      SERVICE_NAME: agent-context
+      LOG_LEVEL: INFO
+    ports:
+      - "8010:8000"
+
+  agent-risk-ml:
+    build:
+      context: .
+      dockerfile: services/agent-risk-ml/Dockerfile
+    environment:
+      SERVICE_NAME: agent-risk-ml
+      LOG_LEVEL: INFO
+      MODEL_VERSION: stub-0.1
+      DEFAULT_RISK_SCORE: 0.42
+    ports:
+      - "8011:8000"
+
+  agent-llm-explainer:
+    build:
+      context: .
+      dockerfile: services/agent-llm-explainer/Dockerfile
+    environment:
+      SERVICE_NAME: agent-llm-explainer
+      LOG_LEVEL: INFO
+      LLM_PROVIDER: placeholder
+      LLM_MODEL: stub-llm
+      PROMPT_VERSION: v0
+    ports:
+      - "8012:8000"
+
+  agent-policy:
+    build:
+      context: .
+      dockerfile: services/agent-policy/Dockerfile
+    environment:
+      SERVICE_NAME: agent-policy
+      LOG_LEVEL: INFO
+      RULESET_VERSION: v0
+    ports:
+      - "8013:8000"
+
+  human-review-api:
+    build:
+      context: .
+      dockerfile: services/human-review-api/Dockerfile
+    environment:
+      SERVICE_NAME: human-review-api
+      LOG_LEVEL: INFO
+    ports:
+      - "8003:8000"
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  nats:
+    image: nats:2
+    ports:
+      - "4222:4222"

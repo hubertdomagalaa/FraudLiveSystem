@@ -1,0 +1,25 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decision-orchestrator
+  namespace: fraud-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: decision-orchestrator
+  template:
+    metadata:
+      labels:
+        app: decision-orchestrator
+    spec:
+      containers:
+        - name: decision-orchestrator
+          image: fraud/decision-orchestrator:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: fraud-platform-config
+            - secretRef:
+                name: fraud-platform-secrets
