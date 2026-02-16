@@ -1,0 +1,13 @@
+{
+  "ruleset_version": "v1",
+  "thresholds": {
+    "block_risk_score_gte": 0.9,
+    "review_risk_score_gte": 0.6,
+    "review_amount_gte": 5000
+  },
+  "reason_codes": {
+    "block_risk": "RISK_SCORE_CRITICAL",
+    "review_risk": "RISK_SCORE_HIGH",
+    "review_amount": "HIGH_AMOUNT"
+  }
+}

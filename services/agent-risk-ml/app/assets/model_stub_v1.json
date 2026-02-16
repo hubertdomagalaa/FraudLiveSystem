@@ -1,0 +1,13 @@
+{
+  "model_version": "stub-ml-v1",
+  "feature_version": "risk-features-v1",
+  "intercept": -1.2,
+  "weights": {
+    "amount_scaled": 2.0,
+    "new_device": 0.9,
+    "geo_mismatch": 1.1,
+    "high_velocity": 1.4,
+    "device_trusted": -0.8,
+    "account_age_years": -0.3
+  }
+}

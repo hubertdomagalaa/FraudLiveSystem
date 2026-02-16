@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-aggregate
+  namespace: fraud-platform
+spec:
+  selector:
+    app: agent-aggregate
+  ports:
+    - port: 80
+      targetPort: 8000

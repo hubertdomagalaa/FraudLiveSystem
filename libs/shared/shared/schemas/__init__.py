@@ -1,4 +1,7 @@
-﻿from .agents import (
+from .agents import (
+    AggregateAgentOutput,
+    AggregateAgentRequest,
+    AggregateAgentResponse,
     ContextAgentOutput,
     ContextAgentRequest,
     ContextAgentResponse,
@@ -28,6 +31,9 @@ from .transactions import TransactionEvent, TransactionIn, TransactionStored
 
 __all__ = [
     "AgentResult",
+    "AggregateAgentOutput",
+    "AggregateAgentRequest",
+    "AggregateAgentResponse",
     "ContextAgentOutput",
     "ContextAgentRequest",
     "ContextAgentResponse",

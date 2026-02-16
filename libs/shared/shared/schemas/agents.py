@@ -52,6 +52,14 @@ class LLMExplanationOutput(BaseSchema):
     prompt_version: str
 
 
+class AggregateAgentOutput(BaseSchema):
+    recommendation: str
+    requires_human_review: bool
+    reason_codes: List[str] = Field(default_factory=list)
+    confidence: float
+    summary: str
+
+
 class ContextAgentRequest(BaseSchema):
     transaction: TransactionStored
     trace_id: Optional[str] = None
@@ -78,6 +86,15 @@ class LLMExplanationRequest(BaseSchema):
     trace_id: Optional[str] = None
 
 
+class AggregateAgentRequest(BaseSchema):
+    transaction: TransactionStored
+    context: Optional[ContextAgentOutput] = None
+    risk: Optional[RiskMLAgentOutput] = None
+    policy: Optional[PolicyAgentOutput] = None
+    explain: Optional[LLMExplanationOutput] = None
+    trace_id: Optional[str] = None
+
+
 class ContextAgentResponse(BaseSchema):
     metadata: ExecutionMetadata
     result: ContextAgentOutput
@@ -96,3 +113,8 @@ class PolicyAgentResponse(BaseSchema):
 class LLMExplanationResponse(BaseSchema):
     metadata: ExecutionMetadata
     result: LLMExplanationOutput
+
+
+class AggregateAgentResponse(BaseSchema):
+    metadata: ExecutionMetadata
+    result: AggregateAgentOutput

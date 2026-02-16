@@ -1,14 +1,26 @@
-﻿apiVersion: v1
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: fraud-platform-config
   namespace: fraud-platform
 data:
-  LOG_LEVEL: "INFO"
   ENVIRONMENT: "dev"
-  QUEUE_BACKEND: "noop"
-  CONTEXT_AGENT_URL: "http://agent-context"
-  RISK_AGENT_URL: "http://agent-risk-ml"
-  POLICY_AGENT_URL: "http://agent-policy"
-  LLM_AGENT_URL: "http://agent-llm-explainer"
-  DEFAULT_DECISION: "REVIEW"
+  LOG_LEVEL: "INFO"
+  REDIS_URL: "redis://redis:6379/0"
+  MODEL_VERSION: "stub-0.1"
+  DEFAULT_RISK_SCORE: "0.42"
+  RULESET_VERSION: "v1"
+  PROVIDER: "placeholder"
+  MODEL: "stub-llm"
+  PROMPT_VERSION: "v1"
+  REDIS_BLOCK_MS: "5000"
+  REDIS_READ_COUNT: "10"
+  REDIS_CLAIM_IDLE_MS: "60000"
+  MAX_RETRY_ATTEMPTS: "5"
+  AUTH_ENABLED: "true"
+  JWT_ALGORITHM: "HS256"
+  JWT_REQUIRED_SCOPE: "fraud.write"
+  RATE_LIMIT_ENABLED: "true"
+  WRITE_RATE_LIMIT_REQUESTS: "60"
+  WRITE_RATE_LIMIT_WINDOW_SECONDS: "60"
+  TRACING_ENABLED: "true"

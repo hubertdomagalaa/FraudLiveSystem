@@ -1,6 +1,22 @@
-﻿version: "3.9"
+version: "3.9"
 
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: fraud_platform
+      POSTGRES_USER: fraud
+      POSTGRES_PASSWORD: fraud
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
   ingestion-api:
     build:
       context: .
@@ -8,11 +24,13 @@ services:
     environment:
       SERVICE_NAME: ingestion-api
       LOG_LEVEL: INFO
-      QUEUE_BACKEND: noop
+      POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8001:8000"
     depends_on:
-      - nats
+      - postgres
+      - redis
 
   decision-orchestrator:
     build:
@@ -21,18 +39,14 @@ services:
     environment:
       SERVICE_NAME: decision-orchestrator
       LOG_LEVEL: INFO
-      CONTEXT_AGENT_URL: http://agent-context:8000
-      RISK_AGENT_URL: http://agent-risk-ml:8000
-      POLICY_AGENT_URL: http://agent-policy:8000
-      LLM_AGENT_URL: http://agent-llm-explainer:8000
-      DEFAULT_DECISION: REVIEW
+      POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
+      REDIS_URL: redis://redis:6379/0
+      CONSUMER_NAME: decision-orchestrator-1
     ports:
       - "8002:8000"
     depends_on:
-      - agent-context
-      - agent-risk-ml
-      - agent-policy
-      - agent-llm-explainer
+      - postgres
+      - redis
 
   agent-context:
     build:
@@ -41,8 +55,14 @@ services:
     environment:
       SERVICE_NAME: agent-context
       LOG_LEVEL: INFO
+      POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
+      REDIS_URL: redis://redis:6379/0
+      CONSUMER_NAME: agent-context-1
     ports:
       - "8010:8000"
+    depends_on:
+      - postgres
+      - redis
 
   agent-risk-ml:
     build:
@@ -53,8 +73,14 @@ services:
       LOG_LEVEL: INFO
       MODEL_VERSION: stub-0.1
       DEFAULT_RISK_SCORE: 0.42
+      POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
+      REDIS_URL: redis://redis:6379/0
+      CONSUMER_NAME: agent-risk-ml-1
     ports:
       - "8011:8000"
+    depends_on:
+      - postgres
+      - redis
 
   agent-llm-explainer:
     build:
@@ -63,11 +89,17 @@ services:
     environment:
       SERVICE_NAME: agent-llm-explainer
       LOG_LEVEL: INFO
-      LLM_PROVIDER: placeholder
-      LLM_MODEL: stub-llm
-      PROMPT_VERSION: v0
+      PROVIDER: placeholder
+      MODEL: stub-llm
+      PROMPT_VERSION: v1
+      POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
+      REDIS_URL: redis://redis:6379/0
+      CONSUMER_NAME: agent-llm-explainer-1
     ports:
       - "8012:8000"
+    depends_on:
+      - postgres
+      - redis
 
   agent-policy:
     build:
@@ -76,9 +108,31 @@ services:
     environment:
       SERVICE_NAME: agent-policy
       LOG_LEVEL: INFO
-      RULESET_VERSION: v0
+      RULESET_VERSION: v1
+      POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
+      REDIS_URL: redis://redis:6379/0
+      CONSUMER_NAME: agent-policy-1
     ports:
       - "8013:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  agent-aggregate:
+    build:
+      context: .
+      dockerfile: services/agent-aggregate/Dockerfile
+    environment:
+      SERVICE_NAME: agent-aggregate
+      LOG_LEVEL: INFO
+      POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
+      REDIS_URL: redis://redis:6379/0
+      CONSUMER_NAME: agent-aggregate-1
+    ports:
+      - "8014:8000"
+    depends_on:
+      - postgres
+      - redis
 
   human-review-api:
     build:
@@ -87,8 +141,30 @@ services:
     environment:
       SERVICE_NAME: human-review-api
       LOG_LEVEL: INFO
+      POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
+      REDIS_URL: redis://redis:6379/0
+      CONSUMER_NAME: human-review-api-1
     ports:
       - "8003:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  dlq-ops-api:
+    build:
+      context: .
+      dockerfile: services/dlq-ops-api/Dockerfile
+    environment:
+      SERVICE_NAME: dlq-ops-api
+      LOG_LEVEL: INFO
+      POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
+      REDIS_URL: redis://redis:6379/0
+      CONSUMER_NAME: dlq-ops-api-1
+    ports:
+      - "8004:8000"
+    depends_on:
+      - postgres
+      - redis
 
   prometheus:
     image: prom/prometheus:latest
@@ -107,7 +183,5 @@ services:
     depends_on:
       - prometheus
 
-  nats:
-    image: nats:2
-    ports:
-      - "4222:4222"
+volumes:
+  postgres_data:

@@ -1,65 +1,98 @@
-﻿from datetime import datetime, timezone
-from uuid import uuid4
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
-from app.repositories.reviews import ReviewRepository
-from shared.schemas.reviews import (
-    ReviewAuditEvent,
-    ReviewCaseIn,
-    ReviewCaseRecord,
-    ReviewDecisionIn,
-    ReviewDecisionRecord,
-    ReviewStatus,
-)
+from shared.database import PlatformDatabase
+from shared.events import EventType, StreamName, build_event, deterministic_uuid
+from shared.rate_limit import enforce_write_rate_limit
+from shared.security import require_write_access
+from shared.schemas.reviews import ReviewDecisionIn, ReviewDecisionRecord
+from shared.tracing import request_trace_context
 
 router = APIRouter(tags=["reviews"])
-repo = ReviewRepository()
 
 
-@router.post("/cases", response_model=ReviewCaseRecord, status_code=status.HTTP_201_CREATED)
-async def create_case(payload: ReviewCaseIn):
-    case = ReviewCaseRecord(
-        case_id=str(uuid4()),
-        status=ReviewStatus.OPEN,
-        created_at=datetime.now(timezone.utc),
-        transaction_id=payload.transaction_id,
-        decision_id=payload.decision_id,
-        reason=payload.reason,
-        payload=payload.payload,
-    )
-    repo.add_case(case)
-    return case
+def _db(request: Request) -> PlatformDatabase:
+    return request.app.state.db
 
 
-@router.get("/cases/{case_id}", response_model=ReviewCaseRecord)
-async def get_case(case_id: str):
-    case = repo.get_case(case_id)
+@router.get("/cases/{case_id}/actions")
+async def get_case_actions(case_id: str, request: Request):
+    case = await _db(request).get_case(case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
-    return case
+    return await _db(request).list_human_review_actions(case_id)
 
 
 @router.post("/cases/{case_id}/decision", response_model=ReviewDecisionRecord, status_code=status.HTTP_201_CREATED)
-async def add_decision(case_id: str, payload: ReviewDecisionIn):
-    case = repo.get_case(case_id)
+async def add_decision(case_id: str, payload: ReviewDecisionIn, request: Request):
+    await require_write_access(request)
+    await enforce_write_rate_limit(request)
+    db = _db(request)
+    broker = request.app.state.broker
+    trace_id, traceparent = request_trace_context(request)
+
+    case = await db.get_case(case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
-    decision = ReviewDecisionRecord(
-        review_decision_id=str(uuid4()),
+
+    review_decision_id = deterministic_uuid(case_id, "human-review-decision", payload.reviewer_id, payload.outcome.value)
+
+    completed_event = build_event(
+        event_type=EventType.CASE_HUMAN_REVIEW_COMPLETED,
+        case_id=case_id,
+        transaction_id=case["transaction_id"],
+        producer="human-review-api",
+        trace_id=trace_id,
+        traceparent=traceparent,
+        event_id=deterministic_uuid(case_id, EventType.CASE_HUMAN_REVIEW_COMPLETED, review_decision_id),
+        idempotency_key=f"{case_id}:human-review:{review_decision_id}",
+        payload={
+            "review_decision_id": review_decision_id,
+            "reviewer_id": payload.reviewer_id,
+            "action": payload.outcome.value,
+            "comment": payload.comment,
+            "labels": payload.labels,
+        },
+    )
+
+    await db.append_human_review_action(
+        review_action_id=review_decision_id,
+        case_id=case_id,
+        reviewer_id=payload.reviewer_id,
+        action=payload.outcome.value,
+        reason_code=",".join(payload.labels) if payload.labels else None,
+        notes=payload.comment,
+        source_event_id=completed_event.event_id,
+    )
+    await db.append_decision_record(
+        decision_id=deterministic_uuid(case_id, "human-review-record", review_decision_id),
+        case_id=case_id,
+        decision_kind="HUMAN_REVIEW",
+        decision=payload.outcome.value,
+        confidence=None,
+        reason_summary="Human reviewer action",
+        reason_details={
+            "reviewer_id": payload.reviewer_id,
+            "labels": payload.labels,
+            "comment": payload.comment,
+        },
+        decided_by="human-review-api",
+        source_event_id=completed_event.event_id,
+    )
+
+    message_id = await broker.publish(StreamName.CASE_EVENTS, completed_event)
+    await db.append_case_event(
+        event=completed_event,
+        stream_name=StreamName.CASE_EVENTS,
+        stream_message_id=message_id,
+    )
+
+    return ReviewDecisionRecord(
+        review_decision_id=review_decision_id,
         decided_at=datetime.now(timezone.utc),
         reviewer_id=payload.reviewer_id,
         outcome=payload.outcome,
         comment=payload.comment,
         labels=payload.labels,
     )
-    repo.add_decision(case_id, decision)
-    return decision
-
-
-@router.get("/cases/{case_id}/audit", response_model=list[ReviewAuditEvent])
-async def get_audit(case_id: str):
-    case = repo.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-    return repo.get_audit(case_id)

@@ -13,8 +13,8 @@ class ReviewStatus(str, Enum):
 
 
 class ReviewDecisionOutcome(str, Enum):
-    APPROVE = "APPROVE"
-    DECLINE = "DECLINE"
+    ALLOW = "ALLOW"
+    BLOCK = "BLOCK"
 
 
 class ReviewCaseIn(BaseSchema):

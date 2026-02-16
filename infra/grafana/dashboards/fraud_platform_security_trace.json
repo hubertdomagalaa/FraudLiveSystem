@@ -1,0 +1,48 @@
+{
+  "title": "Fraud Platform Security & Trace",
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Auth Rejected per Minute",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(auth_rejected_total[1m])) by (service, path, reason)",
+          "legendFormat": "{{service}} {{path}} {{reason}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Rate Limited per Minute",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(rate_limit_rejected_total[1m])) by (service, path, method)",
+          "legendFormat": "{{service}} {{method}} {{path}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "HTTP Request Latency p95",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service, method, path))",
+          "legendFormat": "{{service}} {{method}} {{path}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FraudLiveSystem
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e libs/shared
+          for req in services/*/requirements.txt; do pip install -r "$req"; done
+
+      - name: Lint
+        run: |
+          ruff check libs/shared/shared services tests
+
+      - name: Compile check
+        run: |
+          python -m compileall libs/shared/shared services migrations tests
+
+      - name: Migration dry-run
+        run: |
+          alembic upgrade head --sql > /dev/null
+
+      - name: Shared tests
+        run: |
+          PYTHONPATH=libs/shared pytest -q tests
+
+      - name: Service tests
+        run: |
+          for svc in \
+            services/ingestion-api \
+            services/dlq-ops-api \
+            services/agent-context \
+            services/agent-risk-ml \
+            services/agent-policy \
+            services/agent-llm-explainer \
+            services/agent-aggregate; do
+            PYTHONPATH="libs/shared:$svc" pytest -q "$svc/tests"
+          done

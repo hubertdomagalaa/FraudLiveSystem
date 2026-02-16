@@ -1,0 +1,4 @@
+- All orchestration is event-driven
+- No service calls orchestrator directly
+- All writes are append-only
+- All agent outputs must be persisted

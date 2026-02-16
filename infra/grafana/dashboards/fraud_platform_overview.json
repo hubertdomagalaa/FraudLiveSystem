@@ -1,8 +1,61 @@
-﻿{
+{
   "title": "Fraud Platform Overview",
   "timezone": "browser",
   "schemaVersion": 36,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
-  "panels": []
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Stream Group Lag",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "stream_group_lag",
+          "legendFormat": "{{service}} {{stream}} {{consumer_group}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Agent Latency p95",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(agent_execution_duration_seconds_bucket[5m])) by (le, service, agent))",
+          "legendFormat": "{{service}} {{agent}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Retries per Minute",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(stream_retry_total[1m])) by (service, stream, event_type)",
+          "legendFormat": "{{service}} {{stream}} {{event_type}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "DLQ Events per Minute",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(stream_dlq_total[1m])) by (service, stream, event_type)",
+          "legendFormat": "{{service}} {{stream}} {{event_type}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    }
+  ]
 }

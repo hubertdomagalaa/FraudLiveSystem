@@ -1,28 +1,46 @@
-﻿from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, Request
 
-from app.config import OrchestratorSettings
-from app.orchestration.client import AgentClient
-from app.orchestration.state_machine import DecisionStateMachine
-from app.repositories.decisions import DecisionRepository
-from shared.schemas.decisions import DecisionAggregate, DecisionRequest
+from shared.database import PlatformDatabase
 
-router = APIRouter(tags=["decisions"])
-settings = OrchestratorSettings()
-repo = DecisionRepository()
-client = AgentClient(settings)
-orchestrator = DecisionStateMachine(client, settings)
+router = APIRouter(tags=["orchestration"])
 
 
-@router.post("/decisions", response_model=DecisionAggregate, status_code=status.HTTP_201_CREATED)
-async def create_decision(request: DecisionRequest):
-    decision = await orchestrator.run(request.transaction)
-    repo.add(decision)
-    return decision
+def _db(request: Request) -> PlatformDatabase:
+    return request.app.state.db
 
 
-@router.get("/decisions/{decision_id}", response_model=DecisionAggregate)
-async def get_decision(decision_id: str):
-    decision = repo.get(decision_id)
-    if not decision:
-        raise HTTPException(status_code=404, detail="Decision not found")
-    return decision
+@router.get("/cases")
+async def list_cases(request: Request, limit: int = Query(default=100, ge=1, le=500)):
+    return await _db(request).list_cases(limit=limit)
+
+
+@router.get("/cases/{case_id}/events")
+async def case_events(case_id: str, request: Request):
+    case = await _db(request).get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return await _db(request).list_case_events(case_id)
+
+
+@router.get("/cases/{case_id}/agent-runs")
+async def case_agent_runs(case_id: str, request: Request):
+    case = await _db(request).get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return await _db(request).list_agent_runs(case_id)
+
+
+@router.get("/cases/{case_id}/decisions")
+async def case_decisions(case_id: str, request: Request):
+    case = await _db(request).get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return await _db(request).list_decisions(case_id)
+
+
+@router.get("/cases/{case_id}/reviews")
+async def case_reviews(case_id: str, request: Request):
+    case = await _db(request).get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return await _db(request).list_human_review_actions(case_id)

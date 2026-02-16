@@ -1,0 +1,4 @@
+- Case = one transaction under review
+- Agent = isolated component with one responsibility
+- Decision = system recommendation (ALLOW / REVIEW / BLOCK)
+- Review = human action on a decision

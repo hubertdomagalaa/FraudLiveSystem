@@ -20,6 +20,9 @@ scrape_configs:
   - job_name: agent-llm-explainer
     static_configs:
       - targets: ["agent-llm-explainer:8000"]
+  - job_name: agent-aggregate
+    static_configs:
+      - targets: ["agent-aggregate:8000"]
   - job_name: human-review-api
     static_configs:
       - targets: ["human-review-api:8000"]

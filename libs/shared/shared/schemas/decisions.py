@@ -18,9 +18,9 @@ AgentOutput = ContextAgentOutput | RiskMLAgentOutput | PolicyAgentOutput | LLMEx
 
 
 class DecisionOutcome(str, Enum):
-    APPROVE = "APPROVE"
+    ALLOW = "ALLOW"
     REVIEW = "REVIEW"
-    DECLINE = "DECLINE"
+    BLOCK = "BLOCK"
 
 
 class DecisionRequest(BaseSchema):
