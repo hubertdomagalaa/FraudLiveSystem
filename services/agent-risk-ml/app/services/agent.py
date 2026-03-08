@@ -40,7 +40,7 @@ class RiskMLAgent:
 
         score = 1.0 / (1.0 + math.exp(-logit))
         base_score = max(0.01, min(0.99, score))
-        base_score = (base_score + settings.default_risk_score) / 2.0
+        base_score = max(settings.default_risk_score, base_score)
 
         output = RiskMLAgentOutput(
             risk_score=round(base_score, 4),

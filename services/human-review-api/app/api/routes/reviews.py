@@ -7,7 +7,7 @@ from shared.events import EventType, StreamName, build_event, deterministic_uuid
 from shared.rate_limit import enforce_write_rate_limit
 from shared.security import require_write_access
 from shared.schemas.reviews import ReviewDecisionIn, ReviewDecisionRecord
-from shared.tracing import request_trace_context
+from shared.tracing import annotate_current_span, request_trace_context
 
 router = APIRouter(tags=["reviews"])
 
@@ -21,6 +21,7 @@ async def get_case_actions(case_id: str, request: Request):
     case = await _db(request).get_case(case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    annotate_current_span(**{"fraud.case_id": case_id})
     return await _db(request).list_human_review_actions(case_id)
 
 
@@ -35,6 +36,7 @@ async def add_decision(case_id: str, payload: ReviewDecisionIn, request: Request
     case = await db.get_case(case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    annotate_current_span(**{"fraud.case_id": case_id})
 
     review_decision_id = deterministic_uuid(case_id, "human-review-decision", payload.reviewer_id, payload.outcome.value)
 
@@ -54,6 +56,14 @@ async def add_decision(case_id: str, payload: ReviewDecisionIn, request: Request
             "comment": payload.comment,
             "labels": payload.labels,
         },
+    )
+    annotate_current_span(
+        **{
+            "fraud.case_id": case_id,
+            "fraud.event_id": completed_event.event_id,
+            "fraud.step": "human_review",
+            "fraud.reviewer_id": payload.reviewer_id,
+        }
     )
 
     await db.append_human_review_action(

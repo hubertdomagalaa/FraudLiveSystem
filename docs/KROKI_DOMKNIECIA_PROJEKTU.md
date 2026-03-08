@@ -24,15 +24,17 @@ Kryterium done:
 - [ ] Ustaw realne wartosci dla:
   - `POSTGRES_DSN`
   - `POSTGRES_PASSWORD`
-  - `JWT_SECRET`
+  - lokalnie `JWT_SECRET` albo produkcyjnie `JWT_JWKS_URL`
 - [ ] Ustaw docelowe parametry auth:
   - `AUTH_ENABLED=true`
   - `JWT_REQUIRED_SCOPE=fraud.write`
-  - opcjonalnie issuer/audience przez ENV
+  - `JWT_ISSUER`
+  - `JWT_AUDIENCE`
+  - `JWT_ALGORITHM=RS256` dla trybu JWKS
 - [ ] Przenies sekrety do managera sekretow (nie trzymaj finalnych wartosci w repo).
 
 Kryterium done:
-- Serwisy startuja na docelowych sekretach i odrzucaja write bez poprawnego JWT.
+- Serwisy startuja tylko z jawnie podanym materialem auth i odrzucaja write bez poprawnego JWT.
 
 ## Etap 2 - Walidacja backendu lokalnie
 
@@ -103,65 +105,21 @@ Kryterium done:
 Kryterium done:
 - Mozesz diagnozowac problemy na podstawie metryk + trace context.
 
-## Etap 4 - Wdrozenie i governance
-
-### 4.1 Deploy K8s
-- [ ] Apply:
-  - `infra/k8s/namespaces.yaml`
-  - `infra/k8s/configmaps.yaml`
-  - `infra/k8s/secrets.yaml`
-  - `infra/k8s/services`
-  - `infra/k8s/deployments`
-  - `infra/k8s/hpa`
-  - `infra/k8s/pdb`
-- [ ] Uruchom migracje na docelowym DB przed ruchem produkcyjnym.
+## Etap 4 - UI MVP
+- [x] React + TypeScript + Vite + Vitest.
+- [x] Lista case'ow.
+- [x] Szczegoly case + timeline eventow.
+- [x] Panel human review.
+- [x] Panel DLQ ops z replay.
+- [x] CORS backend pod UI.
 
 Kryterium done:
-- Serwisy dzialaja stabilnie po deployu, probe/readiness/liveness sa zielone.
+- UI buduje sie i przechodzi testy lokalne.
 
-### 4.2 CI i branch protection
-- [ ] Wlacz wymagane checki CI na PR:
-  - lint
-  - compile
-  - migrations dry-run
-  - tests
-- [ ] Wymus review przed merge.
+## Etap 5 - Formalne domkniecie
+- [ ] Wykonaj finalny smoke `docker compose`.
+- [ ] Zatwierdz runbooki i onboarding.
+- [ ] Zapisz release notes.
 
 Kryterium done:
-- Regresja nie przechodzi do main bez czerwonych flag.
-
-## Etap 5 - Formalne domkniecie backendu
-
-- [ ] Uaktualnij changelog/release notes.
-- [ ] Zatwierdz runbooki:
-  - `docs/RUNBOOK_INCIDENT_RESPONSE.md`
-  - `docs/RUNBOOK_DISASTER_RECOVERY.md`
-  - `docs/RUNBOOK_DLQ_REPLAY.md`
-  - `docs/RUNBOOK_OBSERVABILITY_TRACING.md`
-- [ ] Potwierdz onboarding:
-  - `docs/ONBOARDING_60_MIN.md`
-
-Kryterium done:
-- Backend uznany za domkniety technicznie i operacyjnie.
-
----
-
-## Co dalej: etap UI (po domknieciu backendu)
-
-Po zakonczeniu krokow powyzej zaczynamy UI:
-1. Zdefiniowac user flows:
-   - lista case'ow
-   - szczegoly case + timeline eventow
-   - panel human review
-   - panel DLQ ops (readonly + replay action)
-2. Uzgodnic kontrakty frontend-backend (endpointy, pola, paginacja, filtry).
-3. Wybrac stack UI (np. React + TypeScript + TanStack Query + charting).
-4. Zrobic MVP UI:
-   - Case List
-   - Case Details
-   - Review Action Form
-   - Ops Dashboard view
-5. Dodac auth do UI (token handling + role-based pages).
-
-Kryterium startu UI:
-- Backend smoke i operacje DLQ/recovery sa potwierdzone.
+- Projekt uznany za domkniety technicznie i operacyjnie.

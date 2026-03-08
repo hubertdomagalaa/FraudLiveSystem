@@ -1,0 +1,43 @@
+groups:
+  - name: fraud-platform
+    rules:
+      - alert: FraudPlatformHighStreamLag
+        expr: max(stream_group_lag) by (service, stream, consumer_group) > 25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High stream lag detected
+          description: "{{ $labels.service }} has lag {{ $value }} on {{ $labels.stream }} / {{ $labels.consumer_group }}"
+      - alert: FraudPlatformDLQSpike
+        expr: sum(rate(stream_dlq_total[5m])) by (service, stream) > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: DLQ traffic detected
+          description: "{{ $labels.service }} is sending messages to DLQ on {{ $labels.stream }}"
+      - alert: FraudPlatformRetrySpike
+        expr: sum(rate(stream_retry_total[5m])) by (service, stream) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Retry rate increased
+          description: "{{ $labels.service }} retry rate is elevated on {{ $labels.stream }}"
+      - alert: FraudPlatformAuthRejectSpike
+        expr: sum(rate(auth_rejected_total[5m])) by (service, reason) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Authentication rejections detected
+          description: "{{ $labels.service }} is rejecting requests because of {{ $labels.reason }}"
+      - alert: FraudPlatformRateLimitSpike
+        expr: sum(rate(rate_limit_rejected_total[5m])) by (service, path) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Rate limiting activated
+          description: "{{ $labels.service }} is rate limiting traffic on {{ $labels.path }}"

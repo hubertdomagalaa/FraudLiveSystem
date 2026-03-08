@@ -1,4 +1,4 @@
-﻿from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ServiceSettings(BaseSettings):
@@ -18,12 +18,15 @@ class ServiceSettings(BaseSettings):
     redis_claim_idle_ms: int = 60000
     max_retry_attempts: int = 5
     auth_enabled: bool = True
-    jwt_secret: str = "dev-secret-change-me"
+    jwt_secret: str | None = None
+    jwt_jwks_url: str | None = None
     jwt_algorithm: str = "HS256"
     jwt_required_scope: str = "fraud.write"
     jwt_issuer: str | None = None
     jwt_audience: str | None = None
+    jwt_leeway_seconds: int = 30
     rate_limit_enabled: bool = True
     write_rate_limit_requests: int = 60
     write_rate_limit_window_seconds: int = 60
     tracing_enabled: bool = True
+    cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"

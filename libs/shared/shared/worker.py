@@ -4,6 +4,8 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
+from opentelemetry import trace
+
 from shared.broker import RedisStreamBroker, StreamRecord
 from shared.database import PlatformDatabase
 from shared.events import EventType, EventEnvelope, StreamName, build_event, retry_event
@@ -13,6 +15,7 @@ from shared.observability import (
     inc_stream_retry,
     set_stream_lag,
 )
+from shared.tracing import annotate_current_span
 
 
 ProcessHandler = Callable[[EventEnvelope, str], Awaitable[None]]
@@ -49,6 +52,7 @@ class StreamWorker:
         self.dlq_stream = dlq_stream
         self.logger = logging.getLogger(service_name)
         self._claim_start_id = "0-0"
+        self._tracer = trace.get_tracer(service_name)
 
     async def run(self, stop_event: asyncio.Event) -> None:
         await self.broker.create_consumer_group(self.stream_name, self.consumer_group)
@@ -88,39 +92,63 @@ class StreamWorker:
 
     async def _process_record(self, record: StreamRecord) -> None:
         event = record.event
+        step_name = event.payload.get("step") if isinstance(event.payload, dict) else None
 
-        if await self.db.is_consumer_processed(
-            consumer_group=self.consumer_group,
-            event_id=event.event_id,
-        ):
-            await self.broker.ack(self.stream_name, self.consumer_group, record.message_id)
-            return
+        with self._tracer.start_as_current_span(f"stream {self.stream_name} {event.event_type}"):
+            annotate_current_span(
+                **{
+                    "fraud.service": self.service_name,
+                    "fraud.stream": self.stream_name,
+                    "fraud.consumer_group": self.consumer_group,
+                    "fraud.case_id": event.case_id,
+                    "fraud.event_id": event.event_id,
+                    "fraud.event_type": event.event_type,
+                    "fraud.step": str(step_name) if step_name else None,
+                    "fraud.message_id": record.message_id,
+                }
+            )
 
-        try:
-            await self.handler(event, record.message_id)
-        except Exception as exc:
-            failure_result = await self._handle_failure(event=event, error=exc)
+            if await self.db.is_consumer_processed(
+                consumer_group=self.consumer_group,
+                event_id=event.event_id,
+            ):
+                await self.broker.ack(self.stream_name, self.consumer_group, record.message_id)
+                return
+
+            try:
+                await self.handler(event, record.message_id)
+            except Exception as exc:
+                failure_result = await self._handle_failure(event=event, error=exc)
+                await self.db.mark_consumer_processed(
+                    consumer_group=self.consumer_group,
+                    stream_name=self.stream_name,
+                    event_id=event.event_id,
+                    idempotency_key=event.idempotency_key,
+                    processing_result=failure_result,
+                )
+                await self.broker.ack(self.stream_name, self.consumer_group, record.message_id)
+                return
+
             await self.db.mark_consumer_processed(
                 consumer_group=self.consumer_group,
                 stream_name=self.stream_name,
                 event_id=event.event_id,
                 idempotency_key=event.idempotency_key,
-                processing_result=failure_result,
+                processing_result="success",
             )
             await self.broker.ack(self.stream_name, self.consumer_group, record.message_id)
-            return
-
-        await self.db.mark_consumer_processed(
-            consumer_group=self.consumer_group,
-            stream_name=self.stream_name,
-            event_id=event.event_id,
-            idempotency_key=event.idempotency_key,
-            processing_result="success",
-        )
-        await self.broker.ack(self.stream_name, self.consumer_group, record.message_id)
-        inc_event_processed(self.service_name, self.stream_name, event.event_type)
+            inc_event_processed(self.service_name, self.stream_name, event.event_type)
 
     async def _handle_failure(self, *, event: EventEnvelope, error: Exception) -> str:
+        annotate_current_span(
+            **{
+                "fraud.case_id": event.case_id,
+                "fraud.event_id": event.event_id,
+                "fraud.event_type": event.event_type,
+                "fraud.retry_attempt": event.attempt,
+                "fraud.error": str(error),
+            }
+        )
         self.logger.exception(
             "stream_event_processing_failed",
             extra={

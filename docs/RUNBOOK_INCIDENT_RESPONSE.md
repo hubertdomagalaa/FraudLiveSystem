@@ -33,9 +33,12 @@ Szybko wykryc, odizolowac i usunac problem bez utraty audytu case'ow.
 5. Potwierdz finalizacje case po replay.
 
 ## 3) Auth failures po deploy
-1. Zweryfikuj `JWT_SECRET`, issuer, audience i scope.
-2. Potwierdz zgodnosc tokena z `JWT_REQUIRED_SCOPE`.
-3. Sprawdz `auth_rejected_total` wg powodow.
+1. Zweryfikuj aktywny tryb auth:
+   - local/static secret: `JWT_SECRET`
+   - production/IdP: `JWT_JWKS_URL` + `JWT_ISSUER` + `JWT_AUDIENCE`
+2. Potwierdz zgodnosc `JWT_ALGORITHM` z trybem auth (`HS*` dla secret, `RS*` dla JWKS).
+3. Potwierdz zgodnosc tokena z `JWT_REQUIRED_SCOPE`.
+4. Sprawdz `auth_rejected_total` wg powodow (`invalid_issuer`, `invalid_audience`, `jwks_unavailable`, `missing_scope`).
 
 ## Kryterium zamkniecia incydentu
 1. Lag wraca do baseline.

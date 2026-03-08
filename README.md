@@ -39,6 +39,10 @@ Redis: fraud.case.events.v1  (cg.orchestrator)
 [DLQ Ops API]
    |  consumes fraud.dlq.v1 (cg.dlq.ops)
    |  lists/replays dead-letter events
+
+[UI Console]
+   |  reads orchestration/review/DLQ APIs over HTTP
+   |  submits manual review and replay actions
 ```
 
 ## Event Streams and Consumer Groups
@@ -82,6 +86,8 @@ POSTGRES_DSN=postgresql://fraud:fraud@localhost:5432/fraud_platform alembic upgr
 docker compose up --build
 ```
 
+Backend APIs allow UI origins from `CORS_ALLOWED_ORIGINS` (local default: `http://localhost:5173,http://127.0.0.1:5173`).
+
 4. Generate JWT for write endpoints:
 
 ```bash
@@ -89,16 +95,29 @@ python - <<'PY'
 import jwt, datetime
 token = jwt.encode(
     {"sub":"demo-user","scope":"fraud.write","exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
-    "dev-secret-change-me",
+    "dev-local-fraud-secret",
     algorithm="HS256",
 )
 print(token)
 PY
 ```
 
-Use token as `TOKEN` in commands below.
+Use token as `TOKEN` in commands below and in the UI token field.
 
-5. Ingest a transaction:
+5. Open the UI:
+
+- `http://localhost:5173` when using `docker compose`
+- or run locally:
+
+```bash
+cd ui
+cmd /c npm install
+cmd /c npm run dev
+```
+
+API base URLs can be overridden via `ui/.env` using `ui/.env.example`.
+
+6. Ingest a transaction:
 
 ```bash
 curl -X POST http://localhost:8001/v1/transactions \
@@ -115,7 +134,7 @@ curl -X POST http://localhost:8001/v1/transactions \
   }'
 ```
 
-6. Inspect case timeline:
+7. Inspect case timeline:
 
 ```bash
 curl http://localhost:8002/v1/cases
@@ -124,7 +143,7 @@ curl http://localhost:8002/v1/cases/<case_id>/agent-runs
 curl http://localhost:8002/v1/cases/<case_id>/decisions
 ```
 
-7. Submit human review decision (for REVIEW cases):
+8. Submit human review decision (for REVIEW cases):
 
 ```bash
 curl -X POST http://localhost:8003/v1/cases/<case_id>/decision \
@@ -133,7 +152,7 @@ curl -X POST http://localhost:8003/v1/cases/<case_id>/decision \
   -d '{"reviewer_id":"reviewer-1","outcome":"ALLOW","comment":"verified","labels":["manual_ok"]}'
 ```
 
-8. Inspect/replay DLQ:
+9. Inspect/replay DLQ:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8004/v1/dlq/events
@@ -151,12 +170,15 @@ curl -X POST -H "Authorization: Bearer $TOKEN" http://localhost:8004/v1/dlq/repl
 ## Observability
 
 - Prometheus metrics endpoint: `/metrics` on every service.
+- Traces: OTLP HTTP -> `otel-collector` -> `tempo`.
 - Dashboard: `infra/grafana/dashboards/fraud_platform_overview.json`.
 - Key metrics:
   - `stream_group_lag`
   - `agent_execution_duration_seconds`
   - `stream_retry_total`
   - `stream_dlq_total`
+  - `auth_rejected_total`
+  - `rate_limit_rejected_total`
 
 ## Kubernetes
 
@@ -169,18 +191,26 @@ Before deploy, set real values in `infra/k8s/secrets.yaml` for:
 - `POSTGRES_PASSWORD`
 - `POSTGRES_DSN`
 
+Before deploy, set real IdP values in `infra/k8s/configmaps.yaml` for:
+
+- `JWT_ISSUER`
+- `JWT_AUDIENCE`
+- `JWT_JWKS_URL`
+- `CORS_ALLOWED_ORIGINS`
+
+Production runtime expects exactly one auth mode:
+
+- local/dev: `JWT_SECRET` with symmetric algorithm such as `HS256`
+- production: `JWT_JWKS_URL` with asymmetric algorithm such as `RS256`
+
 Run migrations before service deployments:
 
 ```bash
-# example from CI runner or operator workstation:
-# 1) create DB + Redis first
 kubectl apply -f infra/k8s/namespaces.yaml
 kubectl apply -f infra/k8s/configmaps.yaml
 kubectl apply -f infra/k8s/secrets.yaml
 kubectl apply -f infra/k8s/services/postgres.yaml
 kubectl apply -f infra/k8s/deployments/postgres.yaml
-
-# 2) run migrations against POSTGRES_DSN from secret
 POSTGRES_DSN='postgresql://fraud:<password>@<postgres-host>:5432/fraud_platform' alembic upgrade head
 ```
 

@@ -8,7 +8,7 @@ from shared.events import EventType, StreamName, build_event, deterministic_uuid
 from shared.rate_limit import enforce_write_rate_limit
 from shared.security import require_write_access
 from shared.schemas.transactions import TransactionIn, TransactionStored
-from shared.tracing import request_trace_context
+from shared.tracing import annotate_current_span, request_trace_context
 
 router = APIRouter(tags=["transactions"])
 logger = logging.getLogger("ingestion-api")
@@ -42,6 +42,13 @@ async def ingest_transaction(
 
     existing = await db.get_case_by_ingest_idempotency_key(idempotency_key)
     if existing:
+        annotate_current_span(
+            **{
+                "fraud.case_id": existing["case_id"],
+                "fraud.transaction_id": existing["transaction_id"],
+                "fraud.idempotency_key": idempotency_key,
+            }
+        )
         if _payload_conflicts_with_existing(payload, existing):
             raise HTTPException(status_code=409, detail="Idempotency key already used with different payload")
         return TransactionStored.model_validate(existing["initial_payload"])
@@ -64,6 +71,14 @@ async def ingest_transaction(
         event_id=deterministic_uuid(case_id, EventType.CASE_CREATED, idempotency_key),
         payload={"transaction": stored.model_dump(mode="json")},
         idempotency_key=f"case.created:{idempotency_key}",
+    )
+    annotate_current_span(
+        **{
+            "fraud.case_id": case_id,
+            "fraud.transaction_id": transaction_id,
+            "fraud.event_id": event.event_id,
+            "fraud.idempotency_key": idempotency_key,
+        }
     )
 
     inserted = await db.insert_case(
@@ -106,4 +121,10 @@ async def get_transaction(transaction_id: str, request: Request):
     case = await db.get_case_by_transaction(transaction_id)
     if not case:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    annotate_current_span(
+        **{
+            "fraud.case_id": case["case_id"],
+            "fraud.transaction_id": transaction_id,
+        }
+    )
     return TransactionStored.model_validate(case["initial_payload"])

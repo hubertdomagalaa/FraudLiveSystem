@@ -23,9 +23,12 @@ services:
       dockerfile: services/ingestion-api/Dockerfile
     environment:
       SERVICE_NAME: ingestion-api
+      ENVIRONMENT: dev
       LOG_LEVEL: INFO
       POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
       REDIS_URL: redis://redis:6379/0
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      JWT_SECRET: dev-local-fraud-secret
     ports:
       - "8001:8000"
     depends_on:
@@ -38,10 +41,13 @@ services:
       dockerfile: services/decision-orchestrator/Dockerfile
     environment:
       SERVICE_NAME: decision-orchestrator
+      ENVIRONMENT: dev
       LOG_LEVEL: INFO
       POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
       REDIS_URL: redis://redis:6379/0
       CONSUMER_NAME: decision-orchestrator-1
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      JWT_SECRET: dev-local-fraud-secret
     ports:
       - "8002:8000"
     depends_on:
@@ -54,10 +60,13 @@ services:
       dockerfile: services/agent-context/Dockerfile
     environment:
       SERVICE_NAME: agent-context
+      ENVIRONMENT: dev
       LOG_LEVEL: INFO
       POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
       REDIS_URL: redis://redis:6379/0
       CONSUMER_NAME: agent-context-1
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      JWT_SECRET: dev-local-fraud-secret
     ports:
       - "8010:8000"
     depends_on:
@@ -70,12 +79,15 @@ services:
       dockerfile: services/agent-risk-ml/Dockerfile
     environment:
       SERVICE_NAME: agent-risk-ml
+      ENVIRONMENT: dev
       LOG_LEVEL: INFO
       MODEL_VERSION: stub-0.1
       DEFAULT_RISK_SCORE: 0.42
       POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
       REDIS_URL: redis://redis:6379/0
       CONSUMER_NAME: agent-risk-ml-1
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      JWT_SECRET: dev-local-fraud-secret
     ports:
       - "8011:8000"
     depends_on:
@@ -88,6 +100,7 @@ services:
       dockerfile: services/agent-llm-explainer/Dockerfile
     environment:
       SERVICE_NAME: agent-llm-explainer
+      ENVIRONMENT: dev
       LOG_LEVEL: INFO
       PROVIDER: placeholder
       MODEL: stub-llm
@@ -95,6 +108,8 @@ services:
       POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
       REDIS_URL: redis://redis:6379/0
       CONSUMER_NAME: agent-llm-explainer-1
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      JWT_SECRET: dev-local-fraud-secret
     ports:
       - "8012:8000"
     depends_on:
@@ -107,11 +122,14 @@ services:
       dockerfile: services/agent-policy/Dockerfile
     environment:
       SERVICE_NAME: agent-policy
+      ENVIRONMENT: dev
       LOG_LEVEL: INFO
       RULESET_VERSION: v1
       POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
       REDIS_URL: redis://redis:6379/0
       CONSUMER_NAME: agent-policy-1
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      JWT_SECRET: dev-local-fraud-secret
     ports:
       - "8013:8000"
     depends_on:
@@ -124,10 +142,13 @@ services:
       dockerfile: services/agent-aggregate/Dockerfile
     environment:
       SERVICE_NAME: agent-aggregate
+      ENVIRONMENT: dev
       LOG_LEVEL: INFO
       POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
       REDIS_URL: redis://redis:6379/0
       CONSUMER_NAME: agent-aggregate-1
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      JWT_SECRET: dev-local-fraud-secret
     ports:
       - "8014:8000"
     depends_on:
@@ -140,10 +161,13 @@ services:
       dockerfile: services/human-review-api/Dockerfile
     environment:
       SERVICE_NAME: human-review-api
+      ENVIRONMENT: dev
       LOG_LEVEL: INFO
       POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
       REDIS_URL: redis://redis:6379/0
       CONSUMER_NAME: human-review-api-1
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      JWT_SECRET: dev-local-fraud-secret
     ports:
       - "8003:8000"
     depends_on:
@@ -156,22 +180,57 @@ services:
       dockerfile: services/dlq-ops-api/Dockerfile
     environment:
       SERVICE_NAME: dlq-ops-api
+      ENVIRONMENT: dev
       LOG_LEVEL: INFO
       POSTGRES_DSN: postgresql://fraud:fraud@postgres:5432/fraud_platform
       REDIS_URL: redis://redis:6379/0
       CONSUMER_NAME: dlq-ops-api-1
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      JWT_SECRET: dev-local-fraud-secret
     ports:
       - "8004:8000"
     depends_on:
       - postgres
       - redis
 
+
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - ingestion-api
+      - decision-orchestrator
+      - human-review-api
+      - dlq-ops-api
   prometheus:
     image: prom/prometheus:latest
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts:/etc/prometheus/alerts:ro
     ports:
       - "9090:9090"
+
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./infra/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    ports:
+      - "3200:3200"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./infra/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      - tempo
 
   grafana:
     image: grafana/grafana:latest
@@ -182,6 +241,8 @@ services:
       - "3000:3000"
     depends_on:
       - prometheus
+      - tempo
 
 volumes:
   postgres_data:
+

@@ -9,6 +9,7 @@ from shared.database import PlatformDatabase
 from shared.events import EventEnvelope, EventType, deterministic_uuid
 from shared.rate_limit import enforce_write_rate_limit
 from shared.security import require_write_access
+from shared.tracing import annotate_current_span
 
 router = APIRouter(tags=["dlq"])
 
@@ -31,6 +32,7 @@ def _db(request: Request) -> PlatformDatabase:
 @router.get("/dlq/events")
 async def list_dlq_events(request: Request, limit: int = Query(default=100, ge=1, le=500)):
     await require_write_access(request)
+    annotate_current_span(**{"fraud.dlq.limit": limit})
     return await _db(request).list_dlq_events(limit=limit)
 
 
@@ -62,6 +64,15 @@ async def replay_dlq_event(event_id: str, body: DlqReplayRequest, request: Reque
         replay_event.attempt = 1
 
     stream_message_id = await broker.publish(source_stream, replay_event)
+    annotate_current_span(
+        **{
+            "fraud.case_id": replay_event.case_id,
+            "fraud.event_id": replay_event.event_id,
+            "fraud.source_event_id": event_id,
+            "fraud.step": replay_event.payload.get("step") if isinstance(replay_event.payload, dict) else None,
+            "fraud.dlq.source_stream": source_stream,
+        }
+    )
     await db.append_case_event(
         event=replay_event,
         stream_name=source_stream,

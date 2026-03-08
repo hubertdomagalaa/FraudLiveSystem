@@ -18,9 +18,71 @@ data:
   REDIS_CLAIM_IDLE_MS: "60000"
   MAX_RETRY_ATTEMPTS: "5"
   AUTH_ENABLED: "true"
-  JWT_ALGORITHM: "HS256"
+  JWT_ALGORITHM: "RS256"
   JWT_REQUIRED_SCOPE: "fraud.write"
+  JWT_ISSUER: "https://idp.example.com/"
+  JWT_AUDIENCE: "fraud-platform-api"
+  JWT_JWKS_URL: "https://idp.example.com/.well-known/jwks.json"
+  JWT_LEEWAY_SECONDS: "30"
   RATE_LIMIT_ENABLED: "true"
   WRITE_RATE_LIMIT_REQUESTS: "60"
   WRITE_RATE_LIMIT_WINDOW_SECONDS: "60"
   TRACING_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://otel-collector:4318/v1/traces"
+  CORS_ALLOWED_ORIGINS: "https://fraud-ui.example.com"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: fraud-platform
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+          http:
+    processors:
+      batch:
+    exporters:
+      otlphttp:
+        endpoint: http://tempo:4318
+      debug:
+        verbosity: basic
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlphttp, debug]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: fraud-platform
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+            http:
+    ingester:
+      max_block_duration: 5m
+    compactor:
+      compaction:
+        block_retention: 24h
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /tmp/tempo/traces
+    overrides:
+      defaults:
+        metrics_generator:
+          processors: []

@@ -6,6 +6,7 @@ from app.api.routes.reviews import router as reviews_router
 from app.config import HumanReviewSettings
 from app.stream_worker import HumanReviewStreamWorker
 from shared.broker import RedisStreamBroker
+from shared.cors import add_cors_middleware
 from shared.database import PlatformDatabase
 from shared.logging import configure_logging
 from shared.observability import build_metrics_middleware, metrics_endpoint
@@ -36,10 +37,12 @@ async def lifespan(app: FastAPI):
         service_name=settings.service_name,
         enabled=settings.auth_enabled,
         secret=settings.jwt_secret,
+        jwks_url=settings.jwt_jwks_url,
         algorithm=settings.jwt_algorithm,
         required_scope=settings.jwt_required_scope,
         issuer=settings.jwt_issuer,
         audience=settings.jwt_audience,
+        leeway_seconds=settings.jwt_leeway_seconds,
     )
     app.state.rate_limiter = InMemoryRateLimiter(
         service_name=settings.service_name,
@@ -56,13 +59,14 @@ async def lifespan(app: FastAPI):
         await db.close()
 
 
-app = FastAPI(title="Human Review API", version="1.0.0", lifespan=lifespan)
-app.middleware("http")(build_tracing_middleware(settings.service_name))
-app.middleware("http")(build_metrics_middleware(settings.service_name))
-app.add_api_route("/metrics", metrics_endpoint, methods=["GET"])
-app.include_router(reviews_router, prefix="/v1")
+app = FastAPI(title='Human Review API', version='1.0.0', lifespan=lifespan)
+add_cors_middleware(app, settings.cors_allowed_origins)
+app.middleware('http')(build_tracing_middleware(settings.service_name))
+app.middleware('http')(build_metrics_middleware(settings.service_name))
+app.add_api_route('/metrics', metrics_endpoint, methods=['GET'])
+app.include_router(reviews_router, prefix='/v1')
 
 
-@app.get("/health")
+@app.get('/health')
 async def health():
-    return {"status": "ok", "service": settings.service_name}
+    return {'status': 'ok', 'service': settings.service_name}

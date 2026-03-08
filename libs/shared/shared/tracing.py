@@ -37,15 +37,51 @@ def trace_id_from_traceparent(traceparent: str) -> str:
     return traceparent.split("-")[1]
 
 
+def otlp_traces_endpoint_from_env() -> str | None:
+    return os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+
+
+def tracing_environment() -> str:
+    return os.getenv("ENVIRONMENT", "dev")
+
+
+def _build_span_exporter():
+    endpoint = otlp_traces_endpoint_from_env()
+    if not endpoint:
+        return ConsoleSpanExporter()
+
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+    return OTLPSpanExporter(endpoint=endpoint)
+
+
 def configure_tracing(service_name: str, enabled: bool) -> None:
     global _TRACING_INITIALIZED
     if not enabled or _TRACING_INITIALIZED:
         return
 
-    provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
-    provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    provider = TracerProvider(
+        resource=Resource.create(
+            {
+                "service.name": service_name,
+                "deployment.environment": tracing_environment(),
+            }
+        )
+    )
+    provider.add_span_processor(BatchSpanProcessor(_build_span_exporter()))
     trace.set_tracer_provider(provider)
     _TRACING_INITIALIZED = True
+
+
+def annotate_current_span(**attributes: object) -> None:
+    span = trace.get_current_span()
+    if span is None:
+        return
+
+    for key, value in attributes.items():
+        if value is None:
+            continue
+        span.set_attribute(key, value)
 
 
 def build_tracing_middleware(service_name: str):
@@ -66,6 +102,8 @@ def build_tracing_middleware(service_name: str):
                 span.set_attribute("http.method", request.method)
                 span.set_attribute("http.target", request.url.path)
                 span.set_attribute("trace_id", trace_id)
+                span.set_attribute("fraud.service", service_name)
+                span.set_attribute("fraud.trace_id", trace_id)
                 response = await call_next(request)
         finally:
             TRACE_ID_CTX.reset(token_trace)

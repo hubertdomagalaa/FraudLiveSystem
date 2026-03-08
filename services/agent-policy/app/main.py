@@ -36,10 +36,12 @@ async def lifespan(app: FastAPI):
         service_name=settings.service_name,
         enabled=settings.auth_enabled,
         secret=settings.jwt_secret,
+        jwks_url=settings.jwt_jwks_url,
         algorithm=settings.jwt_algorithm,
         required_scope=settings.jwt_required_scope,
         issuer=settings.jwt_issuer,
         audience=settings.jwt_audience,
+        leeway_seconds=settings.jwt_leeway_seconds,
     )
     app.state.rate_limiter = InMemoryRateLimiter(
         service_name=settings.service_name,
