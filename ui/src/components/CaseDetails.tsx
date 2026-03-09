@@ -17,12 +17,105 @@ type DetailsState = {
   reviews: ReviewAction[];
 };
 
+type DecisionWhy = {
+  recommendation: string;
+  riskScore: number | null;
+  signals: string[];
+  policyViolations: string[];
+  explanation: string;
+};
+
+type PipelineStep = {
+  name: string;
+  done: boolean;
+};
+
 const emptyState: DetailsState = {
   events: [],
   agentRuns: [],
   decisions: [],
   reviews: [],
 };
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object') {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => String(item));
+}
+
+function latestEvent(events: CaseEvent[], eventType: string): CaseEvent | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (events[index].event_type === eventType) {
+      return events[index];
+    }
+  }
+  return null;
+}
+
+function derivePipelineStatuses(events: CaseEvent[], decisions: Decision[], reviews: ReviewAction[]): PipelineStep[] {
+  const eventTypes = new Set(events.map((event) => event.event_type));
+  const hasFinalDecision = decisions.some((decision) => decision.decision_kind === 'FINAL');
+  const hasReviewRequired =
+    eventTypes.has('case.human_review.required') || reviews.some((review) => review.action === 'REVIEW_REQUESTED');
+
+  return [
+    { name: 'INGESTED', done: eventTypes.has('case.created') },
+    { name: 'CONTEXT_DONE', done: eventTypes.has('agent.context.completed') },
+    { name: 'RISK_DONE', done: eventTypes.has('agent.risk.completed') },
+    { name: 'POLICY_DONE', done: eventTypes.has('agent.policy.completed') },
+    { name: 'EXPLAIN_DONE', done: eventTypes.has('agent.explain.completed') },
+    { name: 'AGGREGATED', done: eventTypes.has('agent.aggregate.completed') },
+    { name: 'REVIEW_REQUIRED', done: hasReviewRequired },
+    { name: 'FINALIZED', done: eventTypes.has('case.finalized') || hasFinalDecision },
+  ];
+}
+
+function deriveDecisionWhy(events: CaseEvent[], selectedCase: CaseSummary): DecisionWhy {
+  const contextPayload = asRecord(asRecord(latestEvent(events, 'agent.context.completed')?.payload).result);
+  const riskPayload = asRecord(asRecord(latestEvent(events, 'agent.risk.completed')?.payload).result);
+  const policyPayload = asRecord(asRecord(latestEvent(events, 'agent.policy.completed')?.payload).result);
+  const aggregatePayload = asRecord(latestEvent(events, 'agent.aggregate.completed')?.payload);
+  const explainPayload = asRecord(asRecord(latestEvent(events, 'agent.explain.completed')?.payload).result);
+
+  const recommendation = String(
+    aggregatePayload.recommendation ?? policyPayload.action ?? selectedCase.latest_decision ?? 'OPEN',
+  );
+
+  const riskScoreValue = aggregatePayload.risk_score ?? riskPayload.risk_score;
+  const riskScore = typeof riskScoreValue === 'number' ? riskScoreValue : null;
+
+  const aggregateSignals = asStringArray(aggregatePayload.signals);
+  const contextSignals = asStringArray(contextPayload.signals);
+  const riskSignals = asStringArray(riskPayload.risk_signals);
+  const signals = [...new Set([...aggregateSignals, ...contextSignals, ...riskSignals])];
+
+  const policyViolations = asStringArray(aggregatePayload.policy_violations);
+  const fallbackPolicyViolations = asStringArray(policyPayload.violations);
+
+  const explanation = String(
+    aggregatePayload.explanation ??
+      explainPayload.summary ??
+      policyPayload.explanation ??
+      riskPayload.explanation ??
+      'No explanation available yet.',
+  );
+
+  return {
+    recommendation,
+    riskScore,
+    signals,
+    policyViolations: policyViolations.length > 0 ? policyViolations : fallbackPolicyViolations,
+    explanation,
+  };
+}
 
 export function CaseDetails({ selectedCase, token, refreshKey }: Props) {
   const [state, setState] = useState<DetailsState>(emptyState);
@@ -73,6 +166,9 @@ export function CaseDetails({ selectedCase, token, refreshKey }: Props) {
     return <section className="panel details-empty">Select a case to inspect its timeline and actions.</section>;
   }
 
+  const why = deriveDecisionWhy(state.events, selectedCase);
+  const pipeline = derivePipelineStatuses(state.events, state.decisions, state.reviews);
+
   return (
     <section className="panel details-panel">
       <div className="panel-header">
@@ -88,6 +184,42 @@ export function CaseDetails({ selectedCase, token, refreshKey }: Props) {
 
       {loading ? <p className="status-message">Loading case details...</p> : null}
       {error ? <p className="status-message error">{error}</p> : null}
+
+      <article className="detail-card">
+        <h3>Pipeline Status</h3>
+        <div className="status-grid">
+          {pipeline.map((step) => (
+            <span className={`status-pill ${step.done ? 'done' : 'pending'}`} key={step.name}>
+              {step.name}
+            </span>
+          ))}
+        </div>
+      </article>
+
+      <article className="detail-card why-card">
+        <div className="section-heading">
+          <h3>Why this decision?</h3>
+          <span className="badge badge-hot">{why.recommendation}</span>
+        </div>
+        <div className="why-grid">
+          <div>
+            <small>Risk Score</small>
+            <p className="why-value">{why.riskScore !== null ? why.riskScore.toFixed(2) : '-'}</p>
+          </div>
+          <div>
+            <small>Policy Violations</small>
+            <p className="why-value">{why.policyViolations.length > 0 ? why.policyViolations.join(', ') : 'None'}</p>
+          </div>
+        </div>
+        <div>
+          <small>Signals</small>
+          <p className="why-value">{why.signals.length > 0 ? why.signals.join(', ') : 'No explicit signals yet.'}</p>
+        </div>
+        <div>
+          <small>Explanation</small>
+          <p className="muted">{why.explanation}</p>
+        </div>
+      </article>
 
       <div className="detail-grid">
         <article className="detail-card">

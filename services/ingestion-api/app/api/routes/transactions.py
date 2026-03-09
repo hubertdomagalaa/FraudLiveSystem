@@ -21,7 +21,19 @@ def _db(request: Request) -> PlatformDatabase:
 def _payload_conflicts_with_existing(payload: TransactionIn, existing: dict) -> bool:
     incoming = payload.model_dump(mode="json")
     existing_payload = dict(existing.get("initial_payload", {}))
-    comparable_fields = ("amount", "currency", "merchant_id", "card_id", "timestamp", "metadata")
+    comparable_fields = (
+        "amount",
+        "currency",
+        "merchant_id",
+        "card_id",
+        "timestamp",
+        "country",
+        "ip",
+        "device_id",
+        "prior_chargeback_flags",
+        "merchant_risk_score",
+        "metadata",
+    )
     for field in comparable_fields:
         if incoming.get(field) != existing_payload.get(field):
             return True

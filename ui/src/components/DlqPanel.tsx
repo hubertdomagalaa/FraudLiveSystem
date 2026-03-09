@@ -8,6 +8,18 @@ type Props = {
   token: string;
 };
 
+function getFailedEventType(event: DlqEvent): string {
+  const payload = event.payload as Record<string, unknown>;
+  const failedEvent = payload.failed_event as Record<string, unknown> | undefined;
+  return failedEvent && typeof failedEvent.event_type === 'string' ? failedEvent.event_type : 'unknown';
+}
+
+function getFailedAttempt(event: DlqEvent): number | null {
+  const payload = event.payload as Record<string, unknown>;
+  const failedEvent = payload.failed_event as Record<string, unknown> | undefined;
+  return failedEvent && typeof failedEvent.attempt === 'number' ? failedEvent.attempt : null;
+}
+
 export function DlqPanel({ token }: Props) {
   const [events, setEvents] = useState<DlqEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,7 +49,7 @@ export function DlqPanel({ token }: Props) {
 
     try {
       const result = await api.replayDlqEvent(eventId, token);
-      setStatus(`Replay submitted: ${result.replay_event_id}`);
+      setStatus(`Replay submitted: ${result.replay_event_id} (attempt=${result.attempt})`);
       await loadDlq();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Replay failed';
@@ -69,6 +81,9 @@ export function DlqPanel({ token }: Props) {
                 Replay
               </button>
             </div>
+            <small>
+              Failed event: {getFailedEventType(event)} | attempt: {getFailedAttempt(event) ?? '-'}
+            </small>
             <small>
               {event.case_id} | {formatDate(event.occurred_at)}
             </small>

@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
@@ -22,6 +22,12 @@ class ContextAgentOutput(BaseSchema):
     device_trust: str
     account_age_days: int
     signals: List[str] = Field(default_factory=list)
+    signal_details: List[dict[str, str]] = Field(default_factory=list)
+    country_code: Optional[str] = None
+    country_risk_tier: Optional[str] = None
+    is_new_device: bool = False
+    has_prior_chargeback: bool = False
+    merchant_risk_score: Optional[float] = None
 
 
 class RiskMLAgentOutput(BaseSchema):
@@ -29,6 +35,9 @@ class RiskMLAgentOutput(BaseSchema):
     model_version: str
     feature_version: str
     features_used: List[str] = Field(default_factory=list)
+    score_breakdown: dict[str, float] = Field(default_factory=dict)
+    risk_signals: List[str] = Field(default_factory=list)
+    explanation: Optional[str] = None
 
 
 class PolicyAction(str, Enum):
@@ -41,6 +50,8 @@ class PolicyAgentOutput(BaseSchema):
     ruleset_version: str
     violations: List[str] = Field(default_factory=list)
     action: PolicyAction
+    triggered_rules: List[str] = Field(default_factory=list)
+    explanation: Optional[str] = None
 
 
 class LLMExplanationOutput(BaseSchema):
@@ -58,6 +69,11 @@ class AggregateAgentOutput(BaseSchema):
     reason_codes: List[str] = Field(default_factory=list)
     confidence: float
     summary: str
+    risk_score: Optional[float] = None
+    signals: List[str] = Field(default_factory=list)
+    policy_violations: List[str] = Field(default_factory=list)
+    policy_action: Optional[str] = None
+    explanation: Optional[str] = None
 
 
 class ContextAgentRequest(BaseSchema):

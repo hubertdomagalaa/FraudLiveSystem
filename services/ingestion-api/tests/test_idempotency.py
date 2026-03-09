@@ -79,7 +79,7 @@ def make_request(db: FakeDB, broker: FakeBroker):
     return request
 
 
-def make_payload(amount: str = "1200.50") -> TransactionIn:
+def make_payload(amount: str = "1200.50", merchant_risk_score: float = 0.45) -> TransactionIn:
     return TransactionIn.model_validate(
         {
             "amount": amount,
@@ -87,6 +87,11 @@ def make_payload(amount: str = "1200.50") -> TransactionIn:
             "merchant_id": "merchant-1",
             "card_id": "card-1",
             "timestamp": "2026-02-16T10:00:00Z",
+            "country": "US",
+            "ip": "203.0.113.10",
+            "device_id": "dev-001",
+            "prior_chargeback_flags": False,
+            "merchant_risk_score": merchant_risk_score,
             "metadata": {"new_device": True},
         }
     )
@@ -113,9 +118,9 @@ async def test_same_idempotency_key_with_different_payload_returns_conflict() ->
     broker = FakeBroker()
     request = make_request(db, broker)
 
-    await ingest_transaction(payload=make_payload("1200.50"), request=request, idempotency_key="idem-2")
+    await ingest_transaction(payload=make_payload("1200.50", merchant_risk_score=0.45), request=request, idempotency_key="idem-2")
 
     with pytest.raises(HTTPException) as exc:
-        await ingest_transaction(payload=make_payload("9999.99"), request=request, idempotency_key="idem-2")
+        await ingest_transaction(payload=make_payload("1200.50", merchant_risk_score=0.88), request=request, idempotency_key="idem-2")
 
     assert exc.value.status_code == 409

@@ -202,7 +202,16 @@ def make_request(db: FakeDB, broker: FakeBroker, path: str, method: str = "POST"
     return request
 
 
-def make_transaction_payload(*, amount: str, metadata: dict) -> TransactionIn:
+def make_transaction_payload(
+    *,
+    amount: str,
+    metadata: dict,
+    country: str | None = None,
+    ip: str | None = None,
+    device_id: str | None = None,
+    prior_chargeback_flags: bool | None = None,
+    merchant_risk_score: float | None = None,
+) -> TransactionIn:
     return TransactionIn.model_validate(
         {
             "amount": amount,
@@ -210,6 +219,11 @@ def make_transaction_payload(*, amount: str, metadata: dict) -> TransactionIn:
             "merchant_id": "merchant-1",
             "card_id": "card-1",
             "timestamp": "2026-02-16T10:00:00Z",
+            "country": country,
+            "ip": ip,
+            "device_id": device_id,
+            "prior_chargeback_flags": prior_chargeback_flags,
+            "merchant_risk_score": merchant_risk_score,
             "metadata": metadata,
         }
     )
@@ -365,7 +379,7 @@ async def drain_events(harness: dict, *, fail_context: bool = False, max_retry_a
 async def test_pipeline_allow_path_finalizes_without_human_review() -> None:
     harness = build_harness()
     request = make_request(harness["db"], harness["broker"], "/v1/transactions")
-    payload = make_transaction_payload(amount="100.00", metadata={"device_trust": "trusted", "account_age_days": 730})
+    payload = make_transaction_payload(amount="100.00", metadata={"device_trust": "trusted", "account_age_days": 730}, country="US", ip="198.51.100.10", device_id="dev-allow-001", prior_chargeback_flags=False, merchant_risk_score=0.12)
 
     stored = await harness["ingest_transaction"](payload=payload, request=request, idempotency_key="allow-case")
     await drain_events(harness)
@@ -382,8 +396,13 @@ async def test_pipeline_review_path_waits_for_human_then_finalizes() -> None:
     harness = build_harness()
     request = make_request(harness["db"], harness["broker"], "/v1/transactions")
     payload = make_transaction_payload(
-        amount="7000.00",
-        metadata={"new_device": True, "high_velocity": True, "device_trust": "unverified", "account_age_days": 3},
+        amount="4000.00",
+        metadata={"new_device": True, "device_trust": "unverified", "account_age_days": 3},
+        country="ID",
+        ip="203.0.113.50",
+        device_id="dev-review-001",
+        prior_chargeback_flags=False,
+        merchant_risk_score=0.6,
     )
 
     stored = await harness["ingest_transaction"](payload=payload, request=request, idempotency_key="review-case")
@@ -431,6 +450,11 @@ async def test_pipeline_block_path_finalizes_with_block() -> None:
             "device_trust": "unverified",
             "account_age_days": 0,
         },
+        country="RU",
+        ip="203.0.113.77",
+        device_id="dev-block-001",
+        prior_chargeback_flags=True,
+        merchant_risk_score=0.96,
     )
 
     stored = await harness["ingest_transaction"](payload=payload, request=request, idempotency_key="block-case")
@@ -448,6 +472,11 @@ async def test_retry_dlq_replay_recovers_case() -> None:
     payload = make_transaction_payload(
         amount="100.00",
         metadata={"device_trust": "trusted", "account_age_days": 730},
+        country="US",
+        ip="198.51.100.11",
+        device_id="dev-replay-001",
+        prior_chargeback_flags=False,
+        merchant_risk_score=0.14,
     )
 
     stored = await harness["ingest_transaction"](payload=payload, request=request, idempotency_key="replay-case")
@@ -471,3 +500,7 @@ async def test_retry_dlq_replay_recovers_case() -> None:
 
     decisions = await harness["db"].list_decisions(case["case_id"])
     assert decisions[-1]["decision"] == "ALLOW"
+
+
+
+

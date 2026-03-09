@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { CaseDetails } from './components/CaseDetails';
 import { CaseList } from './components/CaseList';
+import { CreateTransactionForm } from './components/CreateTransactionForm';
 import { DlqPanel } from './components/DlqPanel';
 import { ReviewPanel } from './components/ReviewPanel';
 import { api } from './lib/api';
@@ -15,19 +16,31 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  async function loadCases() {
+  async function loadCases(preferredTransactionId?: string) {
     setLoading(true);
     setError(null);
     try {
       const result = await api.listCases(token);
       setCases(result);
-      setSelectedCase((current) => result.find((item) => item.case_id === current?.case_id) ?? result[0] ?? null);
+      setSelectedCase((current) => {
+        if (preferredTransactionId) {
+          const matching = result.find((item) => item.transaction_id === preferredTransactionId);
+          if (matching) {
+            return matching;
+          }
+        }
+        return result.find((item) => item.case_id === current?.case_id) ?? result[0] ?? null;
+      });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Failed to load cases';
       setError(message);
     } finally {
       setLoading(false);
     }
+  }
+
+  function refreshWorkspace() {
+    setRefreshKey((value) => value + 1);
   }
 
   useEffect(() => {
@@ -53,26 +66,34 @@ export default function App() {
               value={token}
             />
           </label>
-          <button className="solid-button" onClick={() => setRefreshKey((value) => value + 1)} type="button">
+          <button className="solid-button" onClick={refreshWorkspace} type="button">
             Reload workspace
           </button>
         </div>
       </header>
 
       <main className="workspace-grid">
-        <CaseList
-          cases={cases}
-          error={error}
-          loading={loading}
-          onRefresh={() => setRefreshKey((value) => value + 1)}
-          onSelect={setSelectedCase}
-          selectedCaseId={selectedCase?.case_id ?? null}
-        />
+        <div className="left-stack">
+          <CreateTransactionForm
+            onCreated={(transactionId) => {
+              void loadCases(transactionId);
+            }}
+            token={token}
+          />
+          <CaseList
+            cases={cases}
+            error={error}
+            loading={loading}
+            onRefresh={refreshWorkspace}
+            onSelect={setSelectedCase}
+            selectedCaseId={selectedCase?.case_id ?? null}
+          />
+        </div>
         <CaseDetails refreshKey={refreshKey} selectedCase={selectedCase} token={token} />
         <div className="side-stack">
           <ReviewPanel
             onSubmitted={() => {
-              setRefreshKey((value) => value + 1);
+              refreshWorkspace();
             }}
             selectedCase={selectedCase}
             token={token}

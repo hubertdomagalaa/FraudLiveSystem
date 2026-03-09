@@ -1,0 +1,20 @@
+{
+  "ruleset_version": "v2",
+  "thresholds": {
+    "block_risk_score_gte": 0.9,
+    "review_risk_score_gte": 0.6,
+    "review_amount_gte": 5000,
+    "merchant_risk_review_gte": 0.75,
+    "chargeback_review_amount_gte": 1000,
+    "block_high_risk_country_new_device_risk_gte": 0.85
+  },
+  "reason_codes": {
+    "block_risk": "RISK_SCORE_CRITICAL",
+    "review_risk": "RISK_SCORE_HIGH",
+    "review_amount": "HIGH_AMOUNT",
+    "review_merchant_risk": "MERCHANT_RISK_HIGH",
+    "review_chargeback_amount": "CHARGEBACK_HISTORY_WITH_HIGH_AMOUNT",
+    "review_geo_device": "HIGH_RISK_COUNTRY_NEW_DEVICE",
+    "block_geo_device": "HIGH_RISK_COUNTRY_NEW_DEVICE_CRITICAL"
+  }
+}

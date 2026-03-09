@@ -18,6 +18,11 @@ async def test_context_agent_extracts_signals() -> None:
         merchant_id="merchant-1",
         card_id="card-1",
         timestamp=datetime.now(timezone.utc),
+        country="NG",
+        ip="203.0.113.50",
+        device_id="device-new",
+        prior_chargeback_flags=True,
+        merchant_risk_score=0.88,
         metadata={
             "customer_segment": "vip",
             "device_trust": "trusted",
@@ -32,5 +37,8 @@ async def test_context_agent_extracts_signals() -> None:
     assert response.result.customer_segment == "vip"
     assert response.result.device_trust == "trusted"
     assert response.result.account_age_days == 42
+    assert response.result.country_risk_tier == "HIGH"
+    assert response.result.has_prior_chargeback is True
     assert "NEW_DEVICE" in response.result.signals
     assert "HIGH_VELOCITY" in response.result.signals
+    assert "MERCHANT_RISK_HIGH" in response.result.signals

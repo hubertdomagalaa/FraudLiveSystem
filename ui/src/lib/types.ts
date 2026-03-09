@@ -81,3 +81,33 @@ export type ReplayResult = {
   stream_message_id: string;
   attempt: number;
 };
+
+export type TransactionCreateInput = {
+  amount: number;
+  currency: string;
+  merchant_id: string;
+  card_id: string;
+  timestamp: string;
+  country?: string;
+  ip?: string;
+  device_id?: string;
+  prior_chargeback_flags?: boolean;
+  merchant_risk_score?: number;
+  metadata: Record<string, unknown>;
+};
+
+export type TransactionStored = {
+  transaction_id: string;
+  received_at: string;
+  amount: string;
+  currency: string;
+  merchant_id: string;
+  card_id: string;
+  timestamp: string;
+  country?: string | null;
+  ip?: string | null;
+  device_id?: string | null;
+  prior_chargeback_flags?: boolean | null;
+  merchant_risk_score?: number | null;
+  metadata: Record<string, unknown>;
+};

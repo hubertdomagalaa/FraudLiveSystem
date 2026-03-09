@@ -34,18 +34,28 @@ async def test_aggregate_marks_review_as_human_required() -> None:
                 customer_segment="standard",
                 device_trust="unverified",
                 account_age_days=1,
-                signals=[],
+                signals=["NEW_DEVICE"],
+                country_code="NG",
+                country_risk_tier="HIGH",
+                is_new_device=True,
+                has_prior_chargeback=True,
+                merchant_risk_score=0.8,
             ),
             risk=RiskMLAgentOutput(
                 risk_score=0.7,
                 model_version="v1",
                 feature_version="rules-v1",
                 features_used=["amount"],
+                risk_signals=["MERCHANT_RISK_ELEVATED"],
+                score_breakdown={"merchant_risk": 0.3},
+                explanation="risk explanation",
             ),
             policy=PolicyAgentOutput(
-                ruleset_version="v1",
-                violations=["RISK_SCORE_HIGH"],
+                ruleset_version="v2",
+                violations=["RISK_SCORE_HIGH", "HIGH_RISK_COUNTRY_NEW_DEVICE"],
                 action=PolicyAction.REVIEW,
+                triggered_rules=["risk_score_review", "high_risk_country_new_device_review"],
+                explanation="policy explanation",
             ),
             explain=LLMExplanationOutput(
                 summary="summary",
@@ -62,3 +72,6 @@ async def test_aggregate_marks_review_as_human_required() -> None:
     assert response.result.recommendation == "REVIEW"
     assert response.result.requires_human_review is True
     assert "HUMAN_REVIEW_REQUIRED" in response.result.reason_codes
+    assert response.result.risk_score == 0.7
+    assert "NEW_DEVICE" in response.result.signals
+    assert "RISK_SCORE_HIGH" in response.result.policy_violations

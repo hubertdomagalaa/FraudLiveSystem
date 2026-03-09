@@ -23,7 +23,8 @@ class AggregateAgent:
 
         risk_score = float(request.risk.risk_score if request.risk else 0.0)
         policy_action = str(request.policy.action.value if request.policy else "REVIEW")
-        reason_codes = list(request.policy.violations if request.policy else [])
+        policy_violations = list(request.policy.violations if request.policy else [])
+        reason_codes = list(policy_violations)
 
         recommendation = "ALLOW"
         if policy_action == "BLOCK":
@@ -35,12 +36,33 @@ class AggregateAgent:
         if requires_human_review and "HUMAN_REVIEW_REQUIRED" not in reason_codes:
             reason_codes.append("HUMAN_REVIEW_REQUIRED")
 
+        signals: list[str] = []
+        if request.context:
+            signals.extend(request.context.signals)
+        if request.risk:
+            for signal in request.risk.risk_signals:
+                if signal not in signals:
+                    signals.append(signal)
+
+        explanation_parts: list[str] = []
+        if request.policy and request.policy.explanation:
+            explanation_parts.append(request.policy.explanation)
+        if request.risk and request.risk.explanation:
+            explanation_parts.append(request.risk.explanation)
+        if request.explain and request.explain.summary:
+            explanation_parts.append(request.explain.summary)
+
         output = AggregateAgentOutput(
             recommendation=recommendation,
             requires_human_review=requires_human_review,
             reason_codes=reason_codes,
             confidence=round(min(0.99, max(0.05, risk_score)), 4),
             summary=f"Aggregated recommendation={recommendation}, risk_score={risk_score:.2f}",
+            risk_score=round(risk_score, 4),
+            signals=signals,
+            policy_violations=policy_violations,
+            policy_action=policy_action,
+            explanation=" | ".join(explanation_parts) if explanation_parts else None,
         )
 
         latency_ms = int((time.perf_counter() - start) * 1000)

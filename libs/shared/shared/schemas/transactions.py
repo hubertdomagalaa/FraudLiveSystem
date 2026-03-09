@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict
 
@@ -13,6 +13,11 @@ class TransactionIn(BaseSchema):
     merchant_id: str
     card_id: str
     timestamp: datetime
+    country: str | None = Field(default=None, min_length=2, max_length=2)
+    ip: str | None = None
+    device_id: str | None = None
+    prior_chargeback_flags: bool | None = None
+    merchant_risk_score: float | None = Field(default=None, ge=0.0, le=1.0)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

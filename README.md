@@ -1,224 +1,90 @@
 # Fraud Decision Support Platform
 
-Production-grade, event-driven backend platform for fraud case decision support with mandatory human review.
+Production-grade, event-driven Fraud Decision Support platform with explainable AI recommendations and mandatory human-in-the-loop for sensitive cases.
 
-## System Guarantees
+## Why This Project Matters
 
-- Redis Streams is the execution backbone.
-- Ingestion API only publishes `case.created` events.
-- Decision Orchestrator only consumes events and emits step commands.
-- No service calls orchestrator directly.
-- PostgreSQL is the system of record.
-- Writes are append-only (`cases`, `case_events`, `agent_runs`, `decision_records`, `human_review_actions`, `consumer_dedup`).
-- One transaction equals one case lifecycle.
+- Solves a practical fraud operations problem: classify transactions as ALLOW, BLOCK, or REVIEW.
+- Preserves auditability by design: append-only event and decision history in PostgreSQL.
+- Demonstrates operational maturity: idempotency, retry, DLQ, replay, tracing, and metrics.
+- Provides a real operator UI: create transactions, inspect workflow, explain decisions, run review and recovery.
 
-## Architecture (ASCII)
+## Core Guarantees
 
-```text
-[Ingestion API]
-   |  insert case (Postgres)
-   |  XADD case.created
-   v
-Redis: fraud.case.events.v1  (cg.orchestrator)
-   |
-   |--> orchestrator emits step.run.requested -> fraud.agent.context.cmd.v1   -> [agent-context]
-   |--> orchestrator emits step.run.requested -> fraud.agent.risk.cmd.v1      -> [agent-risk-ml]
-   |--> orchestrator emits step.run.requested -> fraud.agent.policy.cmd.v1    -> [agent-policy]
-   |--> orchestrator emits step.run.requested -> fraud.agent.explain.cmd.v1   -> [agent-llm-explainer]
-   |--> orchestrator emits step.run.requested -> fraud.agent.aggregate.cmd.v1 -> [agent-aggregate]
-   |--> if REVIEW: orchestrator emits human command -> fraud.human_review.cmd.v1 -> [human-review-api]
+- Redis Streams is the orchestration backbone.
+- No direct service -> orchestrator RPC.
+- Orchestrator coordinates by emitting step commands only.
+- PostgreSQL is the system of record with append-only audit tables.
+- REVIEW paths require human decision to finalize.
+- Retry + DLQ + replay remain active and test-covered.
 
-[All agents + human-review-api]
-   |  append agent_runs / human_review_actions (Postgres)
-   |  XADD completion events to fraud.case.events.v1
-   v
-[Decision Orchestrator]
-   |  appends decision_records
-   |  publishes case.finalized (or waits for case.human_review.completed)
+## Architecture at a Glance
 
-[DLQ Ops API]
-   |  consumes fraud.dlq.v1 (cg.dlq.ops)
-   |  lists/replays dead-letter events
+`	ext
+ingestion-api -> case.created (Redis stream)
+  -> decision-orchestrator
+     -> agent-context -> agent-risk-ml -> agent-policy -> agent-llm-explainer -> agent-aggregate
+     -> if REVIEW: human-review-api
 
-[UI Console]
-   |  reads orchestration/review/DLQ APIs over HTTP
-   |  submits manual review and replay actions
-```
+All steps append immutable records to Postgres and publish events back to stream.
+DLQ failures go to fraud.dlq.v1 and can be replayed from dlq-ops-api.
+`
 
-## Event Streams and Consumer Groups
+## 90-Second Quickstart
 
-- `fraud.case.events.v1` -> `cg.orchestrator`
-- `fraud.agent.context.cmd.v1` -> `cg.agent.context`
-- `fraud.agent.risk.cmd.v1` -> `cg.agent.risk`
-- `fraud.agent.policy.cmd.v1` -> `cg.agent.policy`
-- `fraud.agent.explain.cmd.v1` -> `cg.agent.explain`
-- `fraud.agent.aggregate.cmd.v1` -> `cg.agent.aggregate`
-- `fraud.human_review.cmd.v1` -> `cg.human.review`
-- `fraud.dlq.v1` -> `cg.dlq.ops`
+1. Open local run guide: docs/RUN_LOCAL.md
+2. Start stack and UI (Docker + Compose).
+3. Generate JWT and paste it into UI Bearer Token field.
+4. In UI, use Create Transaction preset and submit.
+5. Open case details and show:
+   - Pipeline Status
+   - Why this decision?
+   - Manual Review (for REVIEW cases)
+   - DLQ Operations replay panel
 
-## PostgreSQL Data Model
+## Demo Assets
 
-- `cases`: immutable case root (transaction to case mapping).
-- `case_events`: immutable event log for full timeline reconstruction.
-- `agent_runs`: immutable per-step execution metadata.
-- `decision_records`: immutable system and human decisions.
-- `human_review_actions`: immutable human-review queue and reviewer actions.
-- `consumer_dedup`: immutable consumer idempotency ledger.
+- Local runbook: docs/RUN_LOCAL.md
+- 5-minute demo script: docs/DEMO_SCRIPT.md
+- Interview checklist: docs/INTERVIEW_CHECKLIST.md
+- Demo seed helper:
 
-## Local Run
+`powershell
+python scripts/demo_seed.py --token YOUR_JWT_TOKEN
+`
 
-1. Start infrastructure:
+## Decision Transparency (v2)
 
-```bash
-docker compose up -d postgres redis
-```
+- Additive explainability payloads: signals, isk_score, policy_violations, explanation.
+- Policy uleset_v2 adds practical fraud signals:
+  - merchant risk score,
+  - prior chargeback history,
+  - high-risk country + new device combinations.
+- UI includes dedicated Why this decision? section so operator does not need to read raw JSON.
 
-2. Run DB migrations:
+## Security and Observability
 
-```bash
-pip install -r requirements-dev.txt
-POSTGRES_DSN=postgresql://fraud:fraud@localhost:5432/fraud_platform alembic upgrade head
-```
+- JWT write protection supports JWT_SECRET (dev) and JWT_JWKS_URL (prod).
+- Scope-aware access checks and write rate limiting.
+- CORS origin controls for UI.
+- OTLP tracing via collector -> Tempo and Prometheus metrics on each service.
 
-3. Start application stack:
+## Testing and Quality
 
-```bash
-docker compose up --build
-```
+- Backend lint + compile + tests (shared + service suites).
+- End-to-end pipeline tests include ALLOW/REVIEW/BLOCK and DLQ/replay recovery.
+- Frontend tests and production build validation.
 
-Backend APIs allow UI origins from `CORS_ALLOWED_ORIGINS` (local default: `http://localhost:5173,http://127.0.0.1:5173`).
+## Local Stack Endpoints
 
-4. Generate JWT for write endpoints:
+- UI: http://localhost:5173
+- Ingestion API: http://localhost:8001
+- Orchestrator API: http://localhost:8002
+- Human Review API: http://localhost:8003
+- DLQ Ops API: http://localhost:8004
+- Grafana: http://localhost:3000
+- Prometheus: http://localhost:9090
 
-```bash
-python - <<'PY'
-import jwt, datetime
-token = jwt.encode(
-    {"sub":"demo-user","scope":"fraud.write","exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
-    "dev-local-fraud-secret",
-    algorithm="HS256",
-)
-print(token)
-PY
-```
+## Production Notes
 
-Use token as `TOKEN` in commands below and in the UI token field.
-
-5. Open the UI:
-
-- `http://localhost:5173` when using `docker compose`
-- or run locally:
-
-```bash
-cd ui
-cmd /c npm install
-cmd /c npm run dev
-```
-
-API base URLs can be overridden via `ui/.env` using `ui/.env.example`.
-
-6. Ingest a transaction:
-
-```bash
-curl -X POST http://localhost:8001/v1/transactions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Idempotency-Key: demo-case-001" \
-  -d '{
-    "amount": 1200.50,
-    "currency": "USD",
-    "merchant_id": "merchant-1",
-    "card_id": "card-xyz",
-    "timestamp": "2026-02-08T10:00:00Z",
-    "metadata": {"device_trust": "unverified", "new_device": true}
-  }'
-```
-
-7. Inspect case timeline:
-
-```bash
-curl http://localhost:8002/v1/cases
-curl http://localhost:8002/v1/cases/<case_id>/events
-curl http://localhost:8002/v1/cases/<case_id>/agent-runs
-curl http://localhost:8002/v1/cases/<case_id>/decisions
-```
-
-8. Submit human review decision (for REVIEW cases):
-
-```bash
-curl -X POST http://localhost:8003/v1/cases/<case_id>/decision \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"reviewer_id":"reviewer-1","outcome":"ALLOW","comment":"verified","labels":["manual_ok"]}'
-```
-
-9. Inspect/replay DLQ:
-
-```bash
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8004/v1/dlq/events
-curl -X POST -H "Authorization: Bearer $TOKEN" http://localhost:8004/v1/dlq/replay/<event_id>
-```
-
-## Failure and Recovery Behavior
-
-- Service restart: consumers rejoin consumer groups and reclaim stale pending messages with `XAUTOCLAIM`.
-- Duplicate events: suppressed by `consumer_dedup` and deterministic event IDs.
-- Retry policy: failed events are re-published with incremented attempt count up to `MAX_RETRY_ATTEMPTS`.
-- Dead-letter policy: exhausted events are published to `fraud.dlq.v1`.
-- Auditability: every step output and decision action is append-only and replayable from `case_events`.
-
-## Observability
-
-- Prometheus metrics endpoint: `/metrics` on every service.
-- Traces: OTLP HTTP -> `otel-collector` -> `tempo`.
-- Dashboard: `infra/grafana/dashboards/fraud_platform_overview.json`.
-- Key metrics:
-  - `stream_group_lag`
-  - `agent_execution_duration_seconds`
-  - `stream_retry_total`
-  - `stream_dlq_total`
-  - `auth_rejected_total`
-  - `rate_limit_rejected_total`
-
-## Kubernetes
-
-Apply manifests under `infra/k8s`.
-
->>> MANUAL STEP REQUIRED <<<
-
-Before deploy, set real values in `infra/k8s/secrets.yaml` for:
-
-- `POSTGRES_PASSWORD`
-- `POSTGRES_DSN`
-
-Before deploy, set real IdP values in `infra/k8s/configmaps.yaml` for:
-
-- `JWT_ISSUER`
-- `JWT_AUDIENCE`
-- `JWT_JWKS_URL`
-- `CORS_ALLOWED_ORIGINS`
-
-Production runtime expects exactly one auth mode:
-
-- local/dev: `JWT_SECRET` with symmetric algorithm such as `HS256`
-- production: `JWT_JWKS_URL` with asymmetric algorithm such as `RS256`
-
-Run migrations before service deployments:
-
-```bash
-kubectl apply -f infra/k8s/namespaces.yaml
-kubectl apply -f infra/k8s/configmaps.yaml
-kubectl apply -f infra/k8s/secrets.yaml
-kubectl apply -f infra/k8s/services/postgres.yaml
-kubectl apply -f infra/k8s/deployments/postgres.yaml
-POSTGRES_DSN='postgresql://fraud:<password>@<postgres-host>:5432/fraud_platform' alembic upgrade head
-```
-
-Then apply:
-
-```bash
-kubectl apply -f infra/k8s/services
-kubectl apply -f infra/k8s/deployments
-kubectl apply -f infra/k8s/hpa
-kubectl apply -f infra/k8s/pdb
-```
+Kubernetes manifests are in infra/k8s. Before real deployment, provide production secrets/IdP config and run migrations against target PostgreSQL.
